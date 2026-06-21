@@ -5,7 +5,24 @@ local player = Players.LocalPlayer
 
 local gui = player:WaitForChild("PlayerGui")
 
-local WORDS_URL = "https://github.com/Null-ScriptX/Word-ScriptV2/blob/main/LOL.lua"
+
+local WORDS_URLS = {
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part1.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part2.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part3.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part4.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part5.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part6.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part7.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part8.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part9.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part10.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part11.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part12.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part13.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part14.txt",
+    "https://raw.githubusercontent.com/YOUR_GITHUB/YOUR_REPO/main/words_part15.txt",
+}
 
 local words = {}
 
@@ -940,6 +957,9 @@ task.spawn(function()
     end
 end)
 
+-- =======================================
+-- 인트로 오버레이
+-- =======================================
 local introOverlay = Instance.new("Frame")
 introOverlay.Name = "IntroOverlay"
 introOverlay.Size = UDim2.new(1, 0, 1, 0)
@@ -1004,17 +1024,51 @@ loadingLabel.TextXAlignment = Enum.TextXAlignment.Center
 loadingLabel.ZIndex = 101
 loadingLabel.Parent = introOverlay
 
+-- =======================================
+-- ★ 수정된 단어 로딩 (plain text, 병렬)
+-- =======================================
 local fetchDone = false
-local fetchedWords = nil
+local loadedChunks = 0
+local totalChunks = #WORDS_URLS
+local wordSet = {}  -- 중복 제거용
 
 task.spawn(function()
-    local success, result = pcall(function()
-        return loadstring(game:HttpGet(WORDS_URL))()
-    end)
-    if success and type(result) == "table" then
-        fetchedWords = result
+    local threads = {}
+
+    for i, url in ipairs(WORDS_URLS) do
+        local t = task.spawn(function()
+            local success, content = pcall(function()
+                return game:HttpGet(url)
+            end)
+
+            if success and type(content) == "string" then
+                -- 줄바꿈으로 단어 분리
+                for word in content:gmatch("[^\r\n]+") do
+                    word = word:match("^%s*(.-)%s*$") -- trim
+                    if word ~= "" and not wordSet[word] then
+                        wordSet[word] = true
+                        table.insert(words, word)
+                    end
+                end
+            end
+
+            loadedChunks += 1
+
+            -- 로딩 레이블 업데이트 (안전하게)
+            pcall(function()
+                loadingLabel.Text = string.format("단어 불러오는 중... (%d/%d)", loadedChunks, totalChunks)
+                local progress = loadedChunks / totalChunks
+                TweenService:Create(progressBarFill, TweenInfo.new(0.2), {
+                    Size = UDim2.new(math.min(progress, 0.95), 0, 1, 0)
+                }):Play()
+            end)
+
+            if loadedChunks >= totalChunks then
+                fetchDone = true
+            end
+        end)
+        table.insert(threads, t)
     end
-    fetchDone = true
 end)
 
 task.spawn(function()
@@ -1023,25 +1077,22 @@ task.spawn(function()
 
     TweenService:Create(introTitle, fadeIn, {TextTransparency = 0}):Play()
     TweenService:Create(loadingLabel, fadeIn, {TextTransparency = 0}):Play()
-    TweenService:Create(progressBarFill, TweenInfo.new(1.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0.85, 0, 1, 0)}):Play()
 
-    loadingLabel.Text = "단어 불러오는 중..."
-    task.wait(0.5)
+    -- 최소 로딩바 진행 (시각적)
+    TweenService:Create(progressBarFill, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0.1, 0, 1, 0)
+    }):Play()
 
-    loadingLabel.Text = "설정값 불러오는 중..."
-    task.wait(0.5)
-
-    loadingLabel.Text = "마무리 작업 중..."
-
+    -- 모든 청크 로드 완료 대기
     while not fetchDone do
         task.wait(0.1)
     end
 
-    words = fetchedWords or {}
-
-    loadingLabel.Text = "불러오기 완료!"
-    TweenService:Create(progressBarFill, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)}):Play()
-    task.wait(0.4)
+    loadingLabel.Text = string.format("불러오기 완료! (%d개 단어)", #words)
+    TweenService:Create(progressBarFill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(1, 0, 1, 0)
+    }):Play()
+    task.wait(0.5)
 
     TweenService:Create(introTitle, fadeOut, {TextTransparency = 1}):Play()
     TweenService:Create(progressBarBack, fadeOut, {BackgroundTransparency = 1}):Play()
